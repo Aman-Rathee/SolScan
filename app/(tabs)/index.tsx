@@ -1,12 +1,12 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, FlatList, ScrollView, ActivityIndicator, StyleSheet, Alert, Linking, KeyboardAvoidingView, Platform, } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useWalletStore } from "../../src/stores/wallet-store";
 import { FavoriteButton } from "../../src/components/FavoriteButton";
-
-
+import { ConnectButton } from "../../src/components/ConnectButton";
+import { useWallet } from "../../src/hooks/useWallet";
 
 const short = (s: string, n = 4) => `${s.slice(0, n)}...${s.slice(-n)}`;
 
@@ -21,6 +21,8 @@ const timeAgo = (ts: number) => {
 
 export default function WalletScreen() {
     const router = useRouter();
+    const wallet = useWallet();
+
     const [address, setAddress] = useState("");
     const [loading, setLoading] = useState(false);
     const [balance, setBalance] = useState<number | null>(null);
@@ -121,6 +123,18 @@ export default function WalletScreen() {
         setTxns([]);
     };
 
+
+    const prevConnected = useRef(false);
+
+    useEffect(() => {
+        if (wallet.connected && wallet.publicKey && !prevConnected.current) {
+            const addr = wallet.publicKey.toBase58();
+            setAddress(addr);
+            searchFromHistory(addr);
+        }
+        prevConnected.current = wallet.connected;
+    }, [wallet.connected, wallet.publicKey]);
+
     return (
         <SafeAreaView style={s.safe} edges={['top']}>
             <KeyboardAvoidingView
@@ -133,10 +147,19 @@ export default function WalletScreen() {
                             <Text style={s.title}>SolScan</Text>
                             <Text style={s.subtitle}>Explore any Solana wallet</Text>
                         </View>
-                        <TouchableOpacity style={s.networkToggle} onPress={toggleNetwork}>
-                            <View style={[s.networkDot, isDevnet && s.networkDotDevnet]} />
-                            <Text style={s.networkText}>{isDevnet ? "Devnet" : "Mainnet"}</Text>
-                        </TouchableOpacity>
+                        <View style={s.headerRight}>
+                            <TouchableOpacity style={s.networkToggle} onPress={toggleNetwork}>
+                                <View style={[s.networkDot, isDevnet && s.networkDotDevnet]} />
+                                <Text style={s.networkText}>{isDevnet ? "Devnet" : "Mainnet"}</Text>
+                            </TouchableOpacity>
+                            <ConnectButton
+                                connected={wallet.connected}
+                                connecting={wallet.connecting}
+                                publicKey={wallet.publicKey?.toBase58() ?? null}
+                                onConnect={wallet.connect}
+                                onDisconnect={wallet.disconnect}
+                            />
+                        </View>
                     </View>
 
                     <View style={s.inputContainer}>
@@ -284,6 +307,14 @@ const s = StyleSheet.create({
         alignItems: "flex-start",
         marginBottom: 28,
     },
+    headerRight: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        flexWrap: "wrap",
+        justifyContent: "flex-end",
+        maxWidth: 200,
+    },
     title: {
         color: "#FFFFFF",
         fontSize: 32,
@@ -400,6 +431,7 @@ const s = StyleSheet.create({
         marginTop: 28,
         borderWidth: 1,
         borderColor: "#2A2A35",
+        position: "relative",
     },
     favoriteWrapper: {
         position: "absolute",
@@ -477,4 +509,4 @@ const s = StyleSheet.create({
         fontSize: 12,
         marginTop: 4,
     },
-}); 
+});
