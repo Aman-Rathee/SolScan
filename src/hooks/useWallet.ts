@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo } from "react";
 import { transact, Web3MobileWallet, } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, clusterApiUrl, } from "@solana/web3.js";
+import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, clusterApiUrl, VersionedTransaction, } from "@solana/web3.js";
 import { useWalletStore } from "../stores/wallet-store";
+import { getSwapQuote, getSwapTransaction, toSmallestUnit, fromSmallestUnit, TOKEN_INFO, QuoteResponse, } from "../services/jupiter";
 
 const APP_IDENTITY = {
     name: "SolScan",
@@ -18,9 +19,11 @@ const decodeAddress = (address: string): PublicKey => {
 };
 
 export function useWallet() {
-    // const [publicKey, setPublicKey] = useState<PublicKey | null>(null);
     const [connecting, setConnecting] = useState(false);
     const [sending, setSending] = useState(false);
+    const [swapping, setSwapping] = useState(false);
+    const [quoteLoading, setQuoteLoading] = useState(false);
+    const [quoteData, setQuoteData] = useState<QuoteResponse | null>(null);
     const isDevnet = useWalletStore((s) => s.isDevnet);
     const connectedPublicKey = useWalletStore((s) => s.connectedPublicKey);
     const setConnectedPublicKey = useWalletStore((s) => s.setConnectedPublicKey);
@@ -160,15 +163,132 @@ export function useWallet() {
             }
         }, [publicKey, connection, cluster]);
 
+
+    // FETCH SWAP QUOTE
+    const fetchSwapQuote = useCallback(
+        async (inputMint: string, outputMint: string, inputAmount: number, inputDecimals: number) => {
+            if (isDevnet) {
+                setQuoteData(null);
+                return null;
+            }
+
+            setQuoteLoading(true);
+            try {
+                const amountInSmallest = toSmallestUnit(inputAmount, inputDecimals);
+                const quote = await getSwapQuote(inputMint, outputMint, amountInSmallest);
+                setQuoteData(quote);
+                return quote;
+            } catch (error) {
+                console.error("[useWallet] quote error:", error);
+                setQuoteData(null);
+                throw error;
+            } finally {
+                setQuoteLoading(false);
+            }
+        },
+        [isDevnet]
+    );
+
+
+    // CLEAR QUOTE
+    const clearQuote = useCallback(() => {
+        setQuoteData(null);
+    }, []);
+
+
+    // EXECUTE SWAP
+    const executeSwap = useCallback(
+        async (quote: QuoteResponse, inputSymbol: string, outputSymbol: string, outputDecimals: number) => {
+            if (!publicKey) {
+                throw new Error("Wallet not connected");
+            }
+
+            if (isDevnet) {
+                throw new Error("Jupiter swaps only work on Mainnet");
+            }
+
+            setSwapping(true);
+            try {
+                const swapTxBase64 = await getSwapTransaction(quote, publicKey.toBase58());
+                const swapTxBuf = Buffer.from(swapTxBase64, "base64");
+                const transaction = VersionedTransaction.deserialize(swapTxBuf);
+
+
+                const signedTransaction = await transact(async (wallet: Web3MobileWallet) => {
+                    await wallet.authorize({
+                        cluster: "mainnet-beta",
+                        identity: APP_IDENTITY,
+                    });
+
+                    const signedTxs = await wallet.signTransactions({
+                        transactions: [transaction],
+                    });
+
+                    if (!signedTxs || signedTxs.length === 0) {
+                        throw new Error("No signed transaction returned");
+                    }
+
+                    return signedTxs[0];
+                });
+
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+
+                const serialized = signedTransaction.serialize();
+                let txSignature: string | null = null;
+
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                    try {
+                        txSignature = await connection.sendRawTransaction(serialized, {
+                            skipPreflight: true,
+                            maxRetries: 2,
+                        });
+                        break;
+                    } catch (err) {
+                        console.log(`[useWallet] swap attempt ${attempt} failed`);
+                        if (attempt < 3) {
+                            await new Promise((resolve) => setTimeout(resolve, 1000));
+                        }
+                    }
+                }
+
+                if (!txSignature) {
+                    throw new Error("Failed to send swap transaction after 3 attempts");
+                }
+
+                const outputAmount = fromSmallestUnit(quote.outAmount, outputDecimals);
+                setQuoteData(null);
+
+                return {
+                    signature: txSignature,
+                    inputSymbol,
+                    outputSymbol,
+                    outputAmount,
+                };
+            } catch (error) {
+                console.error("[useWallet] swap error:", error);
+                throw error;
+            } finally {
+                setSwapping(false);
+            }
+        },
+        [publicKey, connection, isDevnet]
+    );
+
     return {
         publicKey,
         connected: !!publicKey,
         connecting,
         sending,
+        swapping,
+        quoteLoading,
+        quoteData,
         connect,
         disconnect,
         getBalance,
         sendSOL,
+        fetchSwapQuote,
+        clearQuote,
+        executeSwap,
         connection,
     };
 }
