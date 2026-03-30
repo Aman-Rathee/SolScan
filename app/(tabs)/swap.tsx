@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, ActivityIndicator, Modal, FlatList } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { TOKENS, TOKEN_INFO, AVAILABLE_TOKENS, fromSmallestUnit } from "../../src/services/jupiter";
 import { useWallet } from "../../src/hooks/useWallet";
 import { useWalletStore } from "../../src/stores/wallet-store";
@@ -190,7 +191,7 @@ export default function SwapScreen() {
                 )}
 
                 {/* From Token Card */}
-                <View style={[s.card, { marginBottom: 10 }]}>
+                <Animated.View style={[s.card, { marginBottom: 10 }]} entering={FadeInDown.delay(100).springify()}>
                     <View style={s.cardHeader}>
                         <TouchableOpacity style={s.tokenSelector} onPress={() => openPicker("input")}>
                             <View style={[s.tokenIcon, { backgroundColor: inputInfo.color }]}>
@@ -211,17 +212,17 @@ export default function SwapScreen() {
                     <View style={s.cardFooter}>
                         <Text style={s.labelText}>You Pay</Text>
                     </View>
-                </View>
+                </Animated.View>
 
                 {/* Swap Arrow */}
-                <View style={s.arrowContainer}>
+                <Animated.View style={s.arrowContainer} entering={FadeInDown.delay(150).springify()}>
                     <TouchableOpacity style={s.swapArrow} onPress={flipTokens}>
                         <Ionicons name="swap-vertical" size={20} color="#14F195" />
                     </TouchableOpacity>
-                </View>
+                </Animated.View>
 
                 {/* To Token Card */}
-                <View style={s.card}>
+                <Animated.View style={s.card} entering={FadeInDown.delay(200).springify()}>
                     <View style={s.cardHeader}>
                         <TouchableOpacity style={s.tokenSelector} onPress={() => openPicker("output")}>
                             <View style={[s.tokenIcon, { backgroundColor: outputInfo.color }]}>
@@ -241,11 +242,11 @@ export default function SwapScreen() {
                     <View style={s.cardFooter}>
                         <Text style={s.labelText}>You Receive</Text>
                     </View>
-                </View>
+                </Animated.View>
 
                 {/* Quote Details */}
                 {wallet.quoteData && (
-                    <View style={s.detailsCard}>
+                    <Animated.View style={s.detailsCard} entering={FadeInDown.delay(250).springify()}>
                         <View style={s.detailRow}>
                             <Text style={s.detailLabel}>Rate</Text>
                             <Text style={s.detailValue}>
@@ -276,7 +277,7 @@ export default function SwapScreen() {
                                 </Text>
                             </View>
                         )}
-                    </View>
+                    </Animated.View>
                 )}
 
                 {/* Swap Button */}
